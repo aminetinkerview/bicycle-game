@@ -3,11 +3,16 @@ import { Dimensions, Pressable, View } from "react-native";
 import Background from "./assets/Background";
 import Flag from "./assets/Flag";
 import Animated, {
+  useAnimatedReaction,
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
 } from "react-native-reanimated";
 import { useRef } from "react";
+import { FontAwesome5, MaterialIcons } from "@expo/vector-icons";
+import { scheduleOnRN } from "react-native-worklets";
+
+type GameStateType = "READY" | "RUNNING" | "PAUSED" | "WON" | "OVER";
 
 const BACKGROUND_ASPECT_RATIO = 665 / 241;
 const GROUND_LEVEL = 10;
@@ -26,6 +31,7 @@ export default function App() {
 
   const worldWidth = backgroundWidth * 2;
 
+  const monsterRef = useRef<Dotlottie>(null);
   const monsterPosition = useSharedValue(MONSTER_INITIAL_POSITION);
 
   const characterRef = useRef<Dotlottie>(null);
@@ -33,10 +39,34 @@ export default function App() {
   const characterSpeed = useSharedValue(0);
   const characterCenterX = width / 2 - CHARACTER_SIZE / 2;
 
+  const gameState = useSharedValue<GameStateType>("READY");
+
   useFrameCallback(() => {
+    if (gameState.value !== "RUNNING") return;
+    if (characterPosition.value >= worldWidth - FLAG_OFFSET - FLAG_SIZE) {
+      gameState.value = "WON";
+      return;
+    }
+    if (monsterPosition.value >= characterPosition.value - CHARACTER_SIZE / 2) {
+      gameState.value = "OVER";
+      return;
+    }
     monsterPosition.value++;
     characterPosition.value += characterSpeed.value;
   });
+
+  const pauseLotties = () => {
+    monsterRef.current?.pause();
+    characterRef.current?.pause();
+  };
+
+  useAnimatedReaction(
+    () => gameState.value,
+    (value, previous) => {
+      if (value === previous) return;
+      if (value === "WON" || value === "OVER") scheduleOnRN(pauseLotties);
+    },
+  );
 
   const moveCharacter = () => {
     characterSpeed.value = Math.min(characterSpeed.value + 0.5, 2);
@@ -53,6 +83,31 @@ export default function App() {
     } else {
       characterRef.current?.stop();
     }
+  };
+
+  const resumeGame = () => {
+    gameState.value = "RUNNING";
+    monsterRef.current?.play();
+    if (characterSpeed.value > 0) characterRef.current?.play();
+  };
+
+  const restartGame = () => {
+    characterPosition.value = CHARACTER_INITIAL_POSITION;
+    characterSpeed.value = 0;
+    monsterPosition.value = MONSTER_INITIAL_POSITION;
+    gameState.value = "READY";
+    monsterRef.current?.stop();
+    characterRef.current?.stop();
+  };
+
+  const pauseGame = () => {
+    gameState.value = "PAUSED";
+    pauseLotties();
+  };
+
+  const startGame = () => {
+    gameState.value = "RUNNING";
+    monsterRef.current?.play();
   };
 
   const worldStyle = useAnimatedStyle(() => ({
@@ -81,6 +136,34 @@ export default function App() {
     transform: [{ translateX: characterPosition.value }],
   }));
 
+  const pauseButtonStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "RUNNING" ? "flex" : "none",
+  }));
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "RUNNING" ? "none" : "flex",
+  }));
+
+  const pauseStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "PAUSED" ? "flex" : "none",
+  }));
+
+  const winStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "WON" ? "flex" : "none",
+  }));
+
+  const loseStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "OVER" ? "flex" : "none",
+  }));
+
+  const replayStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "READY" ? "none" : "flex",
+  }));
+
+  const startStyle = useAnimatedStyle(() => ({
+    display: gameState.value === "READY" ? "flex" : "none",
+  }));
+
   return (
     <View
       style={{
@@ -103,13 +186,14 @@ export default function App() {
           ]}
         >
           <DotLottie
+            ref={monsterRef}
             source={require("./assets/monster.lottie")}
             style={{
               width: MONSTER_SIZE,
               height: MONSTER_SIZE,
             }}
             loop
-            autoplay
+            autoplay={false}
           />
         </Animated.View>
         <Animated.View
@@ -147,8 +231,87 @@ export default function App() {
       </Animated.View>
       <Pressable
         onPress={moveCharacter}
-        style={{ position: "absolute", inset: 0 }}
+        style={{
+          position: "absolute",
+          inset: 0,
+        }}
       />
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            left: "50%",
+            top: 50,
+            transform: [{ translateX: "-50%" }],
+            flexDirection: "row",
+          },
+          pauseButtonStyle,
+        ]}
+      >
+        <FontAwesome5
+          name="pause"
+          size={40}
+          color="yellow"
+          onPress={pauseGame}
+        />
+      </Animated.View>
+      <Animated.View
+        style={[
+          {
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "#00000062",
+            alignItems: "center",
+            justifyContent: "center",
+          },
+          overlayStyle,
+        ]}
+      >
+        <Animated.Text
+          style={[
+            { color: "white", fontSize: 50, fontWeight: 700 },
+            pauseStyle,
+          ]}
+        >
+          PAUSE MENU
+        </Animated.Text>
+        <Animated.Text
+          style={[{ color: "white", fontSize: 50, fontWeight: 700 }, winStyle]}
+        >
+          YOU WON!
+        </Animated.Text>
+        <Animated.Text
+          style={[{ color: "white", fontSize: 50, fontWeight: 700 }, loseStyle]}
+        >
+          GAME OVER
+        </Animated.Text>
+        <View style={{ gap: 16, flexDirection: "row" }}>
+          <Animated.View style={pauseStyle}>
+            <FontAwesome5
+              name="play"
+              size={40}
+              color="yellow"
+              onPress={resumeGame}
+            />
+          </Animated.View>
+          <Animated.View style={replayStyle}>
+            <MaterialIcons
+              name="replay"
+              size={40}
+              color="yellow"
+              onPress={restartGame}
+            />
+          </Animated.View>
+        </View>
+        <Animated.View style={startStyle}>
+          <FontAwesome5
+            name="play"
+            size={160}
+            color="yellow"
+            onPress={startGame}
+          />
+        </Animated.View>
+      </Animated.View>
     </View>
   );
 }
