@@ -1,7 +1,7 @@
 import { Dotlottie, DotLottie } from "@lottiefiles/dotlottie-react-native";
-import { Dimensions, Pressable, View } from "react-native";
-import Background from "./assets/Background";
-import Flag from "./assets/Flag";
+import { BackHandler, Dimensions, Pressable, View } from "react-native";
+import Background from "../../../assets/Background";
+import Flag from "../../../assets/Flag";
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -11,10 +11,15 @@ import Animated, {
 import { useRef } from "react";
 import { FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { scheduleOnRN } from "react-native-worklets";
+import { BACKGROUND_ASPECT_RATIO } from "../../../consts";
+import {
+  Link,
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
+import { LevelConfigType } from "../../../types";
 
-type GameStateType = "READY" | "RUNNING" | "PAUSED" | "WON" | "OVER";
-
-const BACKGROUND_ASPECT_RATIO = 665 / 241;
 const GROUND_LEVEL = 10;
 const MONSTER_SIZE = 100;
 const MONSTER_INITIAL_POSITION = 25;
@@ -23,13 +28,21 @@ const FLAG_OFFSET = 50;
 const CHARACTER_SIZE = 75;
 const CHARACTER_INITIAL_POSITION = 225;
 
-export default function App() {
+type GameStateType = "READY" | "RUNNING" | "PAUSED" | "WON" | "OVER";
+
+export default function Level() {
+  const params = useLocalSearchParams<LevelConfigType>();
+  const router = useRouter();
+
+  const nbBackgrounds = Number(params.nbBackgrounds);
+  const monsterSpeed = Number(params.monsterSpeed);
+
   const { height, width } = Dimensions.get("window");
 
   const backgroundHeight = height;
   const backgroundWidth = height * BACKGROUND_ASPECT_RATIO;
 
-  const worldWidth = backgroundWidth * 2;
+  const worldWidth = backgroundWidth * nbBackgrounds;
 
   const monsterRef = useRef<Dotlottie>(null);
   const monsterPosition = useSharedValue(MONSTER_INITIAL_POSITION);
@@ -51,7 +64,7 @@ export default function App() {
       gameState.value = "OVER";
       return;
     }
-    monsterPosition.value++;
+    monsterPosition.value += monsterSpeed;
     characterPosition.value += characterSpeed.value;
   });
 
@@ -124,6 +137,30 @@ export default function App() {
     ],
   }));
 
+  useFocusEffect(() => {
+    const onBackPress = () => {
+      if (gameState.value === "RUNNING") {
+        pauseGame();
+        return true;
+      }
+
+      if (gameState.value === "PAUSED") {
+        resumeGame();
+        return true;
+      }
+
+      router.navigate("/");
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress,
+    );
+
+    return () => backHandler.remove();
+  });
+
   const monsterStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: monsterPosition.value }],
   }));
@@ -156,7 +193,7 @@ export default function App() {
     display: gameState.value === "OVER" ? "flex" : "none",
   }));
 
-  const replayStyle = useAnimatedStyle(() => ({
+  const notReadyStyle = useAnimatedStyle(() => ({
     display: gameState.value === "READY" ? "none" : "flex",
   }));
 
@@ -174,8 +211,13 @@ export default function App() {
       <Animated.View
         style={[{ position: "relative", flexDirection: "row" }, worldStyle]}
       >
-        <Background width={backgroundWidth} height={backgroundHeight} />
-        <Background width={backgroundWidth} height={backgroundHeight} />
+        {Array.from({ length: nbBackgrounds }).map((_, index) => (
+          <Background
+            key={index}
+            width={backgroundWidth}
+            height={backgroundHeight}
+          />
+        ))}
         <Animated.View
           style={[
             {
@@ -187,11 +229,12 @@ export default function App() {
         >
           <DotLottie
             ref={monsterRef}
-            source={require("./assets/monster.lottie")}
+            source={require("../../../assets/monster.lottie")}
             style={{
               width: MONSTER_SIZE,
               height: MONSTER_SIZE,
             }}
+            speed={monsterSpeed}
             loop
             autoplay={false}
           />
@@ -218,7 +261,7 @@ export default function App() {
         >
           <DotLottie
             ref={characterRef}
-            source={require("./assets/character.lottie")}
+            source={require("../../../assets/character.lottie")}
             style={{
               width: CHARACTER_SIZE,
               height: CHARACTER_SIZE,
@@ -294,13 +337,18 @@ export default function App() {
               onPress={resumeGame}
             />
           </Animated.View>
-          <Animated.View style={replayStyle}>
+          <Animated.View style={notReadyStyle}>
             <MaterialIcons
               name="replay"
               size={40}
               color="yellow"
               onPress={restartGame}
             />
+          </Animated.View>
+          <Animated.View style={notReadyStyle}>
+            <Link href="/">
+              <MaterialIcons name="home" size={40} color="yellow" />
+            </Link>
           </Animated.View>
         </View>
         <Animated.View style={startStyle}>

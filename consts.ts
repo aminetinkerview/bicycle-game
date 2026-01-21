@@ -1,0 +1,1 @@
+export const BACKGROUND_ASPECT_RATIO = 665 / 241;

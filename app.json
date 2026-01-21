@@ -2,6 +2,7 @@
   "expo": {
     "name": "bicycle-game",
     "slug": "bicycle-game",
+    "scheme": "bicyclegame",
     "version": "1.0.0",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
@@ -26,6 +27,7 @@
       "package": "com.amine.novakid.bicyclegame"
     },
     "plugins": [
+      "expo-router",
       "@lottiefiles/dotlottie-react-native/plugin",
       [
         "expo-navigation-bar",
