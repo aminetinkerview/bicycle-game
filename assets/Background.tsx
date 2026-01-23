@@ -10,9 +10,13 @@ import {
   SvgProps,
 } from "react-native-svg";
 
-export default function Background(props: SvgProps) {
+export default function Background({ style, ...props }: SvgProps) {
   return (
-    <Svg viewBox="0 0 6650 2410" {...props}>
+    <Svg
+      viewBox="0 0 6650 2410"
+      style={[{ overflow: "visible" }, style]}
+      {...props}
+    >
       <Defs>
         <ClipPath id="clip-0">
           <Path

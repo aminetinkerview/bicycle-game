@@ -1,13 +1,15 @@
-import { Dimensions, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import Background from "../../assets/Background";
 import MenuButton from "../../components/menu-button";
 import { BACKGROUND_ASPECT_RATIO } from "../../consts";
 import { levels } from "../../data";
 
 export default function Levels() {
-  const { height } = Dimensions.get("window");
+  const { height } = useWindowDimensions();
   const backgroundHeight = height;
   const backgroundWidth = height * BACKGROUND_ASPECT_RATIO;
+
+  const h = height / 384;
   return (
     <View
       style={{
@@ -15,7 +17,7 @@ export default function Levels() {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: 16,
+        gap: 16 * h,
       }}
     >
       <Background
@@ -31,8 +33,9 @@ export default function Levels() {
             params: { id, nbBackgrounds, monsterSpeed },
           }}
           label={id}
-          width={50}
-          height={50}
+          width={50 * h}
+          height={50 * h}
+          h={h}
         />
       ))}
     </View>

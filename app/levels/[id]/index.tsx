@@ -1,5 +1,11 @@
 import { Dotlottie, DotLottie } from "@lottiefiles/dotlottie-react-native";
-import { BackHandler, Dimensions, Pressable, View } from "react-native";
+import {
+  BackHandler,
+  Platform,
+  Pressable,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import Background from "../../../assets/Background";
 import Flag from "../../../assets/Flag";
 import Animated, {
@@ -8,7 +14,7 @@ import Animated, {
   useFrameCallback,
   useSharedValue,
 } from "react-native-reanimated";
-import { useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { scheduleOnRN } from "react-native-worklets";
 import { BACKGROUND_ASPECT_RATIO } from "../../../consts";
@@ -37,41 +43,51 @@ export default function Level() {
   const nbBackgrounds = Number(params.nbBackgrounds);
   const monsterSpeed = Number(params.monsterSpeed);
 
-  const { height, width } = Dimensions.get("window");
+  const { width, height } = useWindowDimensions();
+
+  const h = height / 384;
+  const w = width / 853.3333333333334;
 
   const backgroundHeight = height;
   const backgroundWidth = height * BACKGROUND_ASPECT_RATIO;
+  const groundLevel = GROUND_LEVEL * h;
+  const monsterSize = MONSTER_SIZE * h;
+  const monsterInitialPosition = MONSTER_INITIAL_POSITION * w;
+  const flagSize = FLAG_SIZE * h;
+  const flagOffset = FLAG_OFFSET * w;
+  const characterSize = CHARACTER_SIZE * h;
+  const characterInitialPosition = CHARACTER_INITIAL_POSITION * w;
 
   const worldWidth = backgroundWidth * nbBackgrounds;
 
   const monsterRef = useRef<Dotlottie>(null);
-  const monsterPosition = useSharedValue(MONSTER_INITIAL_POSITION);
+  const monsterPosition = useSharedValue(monsterInitialPosition);
 
   const characterRef = useRef<Dotlottie>(null);
-  const characterPosition = useSharedValue(CHARACTER_INITIAL_POSITION);
+  const characterPosition = useSharedValue(characterInitialPosition);
   const characterSpeed = useSharedValue(0);
-  const characterCenterX = width / 2 - CHARACTER_SIZE / 2;
+  const characterCenterX = width / 2 - characterSize / 2;
 
   const gameState = useSharedValue<GameStateType>("READY");
 
   useFrameCallback(() => {
     if (gameState.value !== "RUNNING") return;
-    if (characterPosition.value >= worldWidth - FLAG_OFFSET - FLAG_SIZE) {
+    if (characterPosition.value >= worldWidth - flagOffset - flagSize) {
       gameState.value = "WON";
       return;
     }
-    if (monsterPosition.value >= characterPosition.value - CHARACTER_SIZE / 2) {
+    if (monsterPosition.value >= characterPosition.value - characterSize / 2) {
       gameState.value = "OVER";
       return;
     }
-    monsterPosition.value += monsterSpeed;
-    characterPosition.value += characterSpeed.value;
+    monsterPosition.value += monsterSpeed * w;
+    characterPosition.value += characterSpeed.value * w;
   });
 
-  const pauseLotties = () => {
+  const pauseLotties = useCallback(() => {
     monsterRef.current?.pause();
     characterRef.current?.pause();
-  };
+  }, []);
 
   useAnimatedReaction(
     () => gameState.value,
@@ -81,11 +97,11 @@ export default function Level() {
     },
   );
 
-  const moveCharacter = () => {
+  const moveCharacter = useCallback(() => {
     characterSpeed.value = Math.min(characterSpeed.value + 0.5, 2);
     characterRef.current?.setSpeed(characterSpeed.value);
     characterRef.current?.play();
-  };
+  }, []);
 
   const onCharacterAnimationLoop = () => {
     const newSpeed = Math.max(characterSpeed.value - 0.5, 0);
@@ -98,30 +114,30 @@ export default function Level() {
     }
   };
 
-  const resumeGame = () => {
+  const resumeGame = useCallback(() => {
     gameState.value = "RUNNING";
     monsterRef.current?.play();
     if (characterSpeed.value > 0) characterRef.current?.play();
-  };
+  }, []);
 
-  const restartGame = () => {
-    characterPosition.value = CHARACTER_INITIAL_POSITION;
+  const restartGame = useCallback(() => {
+    characterPosition.value = characterInitialPosition;
     characterSpeed.value = 0;
-    monsterPosition.value = MONSTER_INITIAL_POSITION;
+    monsterPosition.value = monsterInitialPosition;
     gameState.value = "READY";
     monsterRef.current?.stop();
     characterRef.current?.stop();
-  };
+  }, [characterInitialPosition, monsterInitialPosition]);
 
-  const pauseGame = () => {
+  const pauseGame = useCallback(() => {
     gameState.value = "PAUSED";
     pauseLotties();
-  };
+  }, [pauseLotties]);
 
-  const startGame = () => {
+  const startGame = useCallback(() => {
     gameState.value = "RUNNING";
     monsterRef.current?.play();
-  };
+  }, []);
 
   const worldStyle = useAnimatedStyle(() => ({
     transform: [
@@ -161,12 +177,54 @@ export default function Level() {
     return () => backHandler.remove();
   });
 
+  const navigateHome = useCallback(() => {
+    router.navigate("/");
+  }, [router]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    const overlayKeymap = {
+      R: restartGame,
+      r: restartGame,
+      Q: navigateHome,
+      q: navigateHome,
+    };
+
+    const keymap: Record<GameStateType, Record<string, () => void>> = {
+      READY: {
+        Enter: startGame,
+      },
+      RUNNING: {
+        " ": moveCharacter,
+        Escape: pauseGame,
+        Backspace: pauseGame,
+      },
+      PAUSED: {
+        Enter: resumeGame,
+        ...overlayKeymap,
+      },
+      WON: overlayKeymap,
+      OVER: overlayKeymap,
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      keymap[gameState.value][event.key]?.();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [startGame, moveCharacter, pauseGame, resumeGame, restartGame]);
+
   const monsterStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: monsterPosition.value }],
   }));
 
   const flagStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: worldWidth - FLAG_OFFSET - FLAG_SIZE }],
+    transform: [{ translateX: worldWidth - flagOffset - flagSize }],
   }));
 
   const characterStyle = useAnimatedStyle(() => ({
@@ -222,7 +280,7 @@ export default function Level() {
           style={[
             {
               position: "absolute",
-              bottom: GROUND_LEVEL,
+              bottom: groundLevel,
             },
             monsterStyle,
           ]}
@@ -231,8 +289,8 @@ export default function Level() {
             ref={monsterRef}
             source={require("../../../assets/monster.lottie")}
             style={{
-              width: MONSTER_SIZE,
-              height: MONSTER_SIZE,
+              width: monsterSize,
+              height: monsterSize,
             }}
             speed={monsterSpeed}
             loop
@@ -243,18 +301,18 @@ export default function Level() {
           style={[
             {
               position: "absolute",
-              bottom: GROUND_LEVEL,
+              bottom: groundLevel,
             },
             flagStyle,
           ]}
         >
-          <Flag width={FLAG_SIZE} height={FLAG_SIZE} />
+          <Flag width={flagSize} height={flagSize} />
         </Animated.View>
         <Animated.View
           style={[
             {
               position: "absolute",
-              bottom: GROUND_LEVEL,
+              bottom: groundLevel,
             },
             characterStyle,
           ]}
@@ -263,8 +321,8 @@ export default function Level() {
             ref={characterRef}
             source={require("../../../assets/character.lottie")}
             style={{
-              width: CHARACTER_SIZE,
-              height: CHARACTER_SIZE,
+              width: characterSize,
+              height: characterSize,
             }}
             onLoop={onCharacterAnimationLoop}
             loop
@@ -272,19 +330,32 @@ export default function Level() {
           />
         </Animated.View>
       </Animated.View>
-      <Pressable
-        onPress={moveCharacter}
-        style={{
-          position: "absolute",
-          inset: 0,
-        }}
-      />
+      {Platform.OS === "web" ? (
+        <button
+          onClick={moveCharacter}
+          onKeyDown={(e) => e.preventDefault()}
+          onKeyUp={(e) => e.preventDefault()}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "transparent",
+          }}
+        />
+      ) : (
+        <Pressable
+          onPress={moveCharacter}
+          style={{
+            position: "absolute",
+            inset: 0,
+          }}
+        />
+      )}
       <Animated.View
         style={[
           {
             position: "absolute",
             left: "50%",
-            top: 50,
+            top: 50 * h,
             transform: [{ translateX: "-50%" }],
             flexDirection: "row",
           },
@@ -293,7 +364,7 @@ export default function Level() {
       >
         <FontAwesome5
           name="pause"
-          size={40}
+          size={40 * h}
           color="yellow"
           onPress={pauseGame}
         />
@@ -312,27 +383,38 @@ export default function Level() {
       >
         <Animated.Text
           style={[
-            { color: "white", fontSize: 50, fontWeight: 700 },
+            { color: "white", fontSize: 50 * h, fontWeight: 700 },
             pauseStyle,
           ]}
         >
           PAUSE MENU
         </Animated.Text>
         <Animated.Text
-          style={[{ color: "white", fontSize: 50, fontWeight: 700 }, winStyle]}
+          style={[
+            { color: "white", fontSize: 50 * h, fontWeight: 700 },
+            winStyle,
+          ]}
         >
           YOU WON!
         </Animated.Text>
         <Animated.Text
-          style={[{ color: "white", fontSize: 50, fontWeight: 700 }, loseStyle]}
+          style={[
+            { color: "white", fontSize: 50 * h, fontWeight: 700 },
+            loseStyle,
+          ]}
         >
           GAME OVER
         </Animated.Text>
-        <View style={{ gap: 16, flexDirection: "row" }}>
+        <View
+          style={{
+            gap: 16 * w,
+            flexDirection: "row",
+          }}
+        >
           <Animated.View style={pauseStyle}>
             <FontAwesome5
               name="play"
-              size={40}
+              size={40 * h}
               color="yellow"
               onPress={resumeGame}
             />
@@ -340,21 +422,21 @@ export default function Level() {
           <Animated.View style={notReadyStyle}>
             <MaterialIcons
               name="replay"
-              size={40}
+              size={40 * h}
               color="yellow"
               onPress={restartGame}
             />
           </Animated.View>
           <Animated.View style={notReadyStyle}>
             <Link href="/">
-              <MaterialIcons name="home" size={40} color="yellow" />
+              <MaterialIcons name="home" size={40 * h} color="yellow" />
             </Link>
           </Animated.View>
         </View>
         <Animated.View style={startStyle}>
           <FontAwesome5
             name="play"
-            size={160}
+            size={160 * h}
             color="yellow"
             onPress={startGame}
           />
