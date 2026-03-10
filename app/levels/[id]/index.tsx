@@ -14,7 +14,7 @@ import Animated, {
   useFrameCallback,
   useSharedValue,
 } from "react-native-reanimated";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { scheduleOnRN } from "react-native-worklets";
 import { BACKGROUND_ASPECT_RATIO } from "../../../consts";
@@ -24,6 +24,7 @@ import {
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
+import { InteractionManager } from "react-native";
 import { LevelConfigType } from "../../../types";
 
 const GROUND_LEVEL = 10;
@@ -39,6 +40,14 @@ type GameStateType = "READY" | "RUNNING" | "PAUSED" | "WON" | "OVER";
 export default function Level() {
   const params = useLocalSearchParams<LevelConfigType>();
   const router = useRouter();
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsReady(true);
+    });
+    return () => task.cancel();
+  }, []);
 
   const nbBackgrounds = Number(params.nbBackgrounds);
   const monsterSpeed = Number(params.monsterSpeed);
@@ -258,6 +267,29 @@ export default function Level() {
   const startStyle = useAnimatedStyle(() => ({
     display: gameState.value === "READY" ? "flex" : "none",
   }));
+
+  if (!isReady) {
+    return (
+      <View
+        style={{
+          backgroundColor: "#F4A968",
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Animated.Text
+          style={{
+            color: "white",
+            fontSize: 40 * h,
+            fontWeight: "700",
+          }}
+        >
+          Loading Level {params.id}...
+        </Animated.Text>
+      </View>
+    );
+  }
 
   return (
     <View
